@@ -47,20 +47,34 @@ def chat():
         context = f"Error accessing page: {str(e)}"
         logging.error(f"Scraping error: {str(e)}")
 
-
-
-
     # Use OpenAI to generate a response
     try:
-        ai_response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are Alexa, a professional assistant for Iron City Motorcycles in the UK. Use British English and provide concise, professional responses."},
-                {"role": "system", "content": context},
-                {"role": "user", "content": user_message}
-            ]
-        )
-        bot_reply = ai_response['choices'][0]['message']['content']
+        # Initial introduction and name gathering
+        if "my name is" in user_message.lower():
+            customer_name = user_message.split("my name is")[-1].strip()
+            if any(word in customer_name.lower() for word in ["swear1", "swear2"]):  # Replace with actual profanity
+                bot_reply = "That's not a proper name. How else can I address you?"
+            else:
+                bot_reply = f"Nice to meet you, {customer_name}! How can I assist you further?"
+
+        else:
+            ai_response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are Alexa, a helpful assistant for Iron City Motorcycles. Assist customers by providing information from the webpage they are viewing and arranging follow-ups if needed."},
+                    {"role": "system", "content": context},
+                    {"role": "user", "content": user_message}
+                ]
+            )
+            bot_reply = ai_response['choices'][0]['message']['content']
+
+        # Offer to progress interaction
+        if "call" in user_message.lower():
+            bot_reply += "\nWould you like me to arrange a call with a sales executive? Our available hours are 9 am to 6 pm UK time."
+
+        elif "part exchange" in user_message.lower():
+            bot_reply += "\nFor part exchanges, the best way to maximize value is to bring the bike into our store. If that’s not an option, you can provide images, the registration number, mileage, and its condition."
+
         return jsonify({"reply": bot_reply})
 
     except Exception as e:
