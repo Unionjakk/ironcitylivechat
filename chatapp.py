@@ -47,12 +47,15 @@ def chat():
         context = f"Error accessing page: {str(e)}"
         logging.error(f"Scraping error: {str(e)}")
 
+
+
+
     # Use OpenAI to generate a response
     try:
         ai_response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are Alexa, a helpful assistant for Iron City Motorcycles. Assist customers by providing information from the webpage they are viewing and arranging follow-ups if needed."},
+                {"role": "system", "content": "You are Alexa, a professional assistant for Iron City Motorcycles in the UK. Use British English and provide concise, professional responses."},
                 {"role": "system", "content": context},
                 {"role": "user", "content": user_message}
             ]
