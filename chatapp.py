@@ -38,7 +38,11 @@ def chat():
             color = soup.find('span', class_="vehicle_description_colour").text.strip() if soup.find('span', class_="vehicle_description_colour") else "Color not listed"
             price = soup.find('span', class_="vehicle_description_price").text.strip() if soup.find('span', class_="vehicle_description_price") else "Price not listed"
 
-            context = f"Title: {title}, Color: {color}, Price: {price}"
+            # Check for deposit status
+            deposit_status = "Deposit Taken" if soup.find('div', class_="caption deposit") else "Available for reservation"
+
+            # Add deposit status to the context
+            context = f"Title: {title}, Color: {color}, Price: {price}, Availability: {deposit_status}"
             logging.info(f"Extracted details: {context}")
         else:
             context = "Unable to fetch details from the page due to HTTP error."
@@ -49,31 +53,19 @@ def chat():
 
     # Use OpenAI to generate a response
     try:
-        # Initial introduction and name gathering
-        if "my name is" in user_message.lower():
-            customer_name = user_message.split("my name is")[-1].strip()
-            if any(word in customer_name.lower() for word in ["swear1", "swear2"]):  # Replace with actual profanity
-                bot_reply = "That's not a proper name. How else can I address you?"
-            else:
-                bot_reply = f"Nice to meet you, {customer_name}! How can I assist you further?"
+        ai_response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are Alexa, a helpful assistant for Iron City Motorcycles. Assist customers by providing information from the webpage they are viewing and arranging follow-ups if needed."},
+                {"role": "system", "content": context},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        bot_reply = ai_response['choices'][0]['message']['content']
 
-        else:
-            ai_response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are Alexa, a helpful assistant for Iron City Motorcycles. Assist customers by providing information from the webpage they are viewing and arranging follow-ups if needed."},
-                    {"role": "system", "content": context},
-                    {"role": "user", "content": user_message}
-                ]
-            )
-            bot_reply = ai_response['choices'][0]['message']['content']
-
-        # Offer to progress interaction
-        if "call" in user_message.lower():
-            bot_reply += "\nWould you like me to arrange a call with a sales executive? Our available hours are 9 am to 6 pm UK time."
-
-        elif "part exchange" in user_message.lower():
-            bot_reply += "\nFor part exchanges, the best way to maximize value is to bring the bike into our store. If that’s not an option, you can provide images, the registration number, mileage, and its condition."
+        # Include deposit-specific logic in response
+        if "Deposit Taken" in context:
+            bot_reply += "\nPlease note, this bike is already reserved. Let me know if you'd like to explore other options."
 
         return jsonify({"reply": bot_reply})
 
