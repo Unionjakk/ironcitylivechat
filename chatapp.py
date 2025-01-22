@@ -2,85 +2,70 @@ from flask import Flask, request, jsonify
 import openai
 import requests
 from bs4 import BeautifulSoup
-import os
+import logging
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Set OpenAI API key from environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set OpenAI API key
+openai.api_key = "sk-your-api-key"
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    user_message = request.json.get("message")
-    page_url = request.json.get("url")
-
-    if not user_message or not page_url:
-        return jsonify({"error": "Message and page URL are required."}), 400
-
-    # Scrape the page
     try:
-        response = requests.get(page_url)
-        if response.status_code == 200:
+        # Log incoming request
+        logging.info("Received request: %s", request.json)
+        
+        # Extract request data
+        user_message = request.json.get("message")
+        page_url = request.json.get("url")
+
+        if not user_message or not page_url:
+            logging.warning("Missing 'message' or 'url' in the request payload.")
+            return jsonify({"error": "Message and page URL are required."}), 400
+
+        # Scrape the page for details
+        logging.info("Attempting to scrape URL: %s", page_url)
+        try:
+            response = requests.get(page_url)
+            response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
-
-            # Extract bike information
-            title = soup.find('h2', {'id': 'used_vehicle_title_mobile'}).text.strip() if soup.find('h2', {'id': 'used_vehicle_title_mobile'}) else "Title not found"
-            description = soup.find('p', {'class': 'vehicle_description'}).text.strip() if soup.find('p', {'class': 'vehicle_description'}) else "Description not available"
-            colour_element = soup.find('span', {'class': 'vehicle_description_colour'})
-            colour = colour_element.text.strip() if colour_element else "Colour not specified"
-            price_element = soup.find('span', {'class': 'vehicle_description_price'})
-            price = price_element.text.strip() if price_element else "Price not listed"
-            mileage_element = soup.find('span', {'class': 'vehicle_description_mileage'})
-            mileage = mileage_element.text.strip() if mileage_element else "Mileage not listed"
-            features_element = soup.find('span', {'class': 'vehicle_description_tags'})
-            features = features_element.text.strip() if features_element else "Features not listed"
-            engine_size_element = soup.find('span', {'class': 'vehicle_description_engine_size'})
-            engine_size = engine_size_element.text.strip() if engine_size_element else "Engine size not listed"
-
-            # Check for deposit status
-            deposit_status = "Deposit Taken" if soup.find('div', {'class': 'caption deposit'}) else "Available for reservation"
-
-            # Extract bike image
-            image_element = soup.find('img', {'class': 'used_bike_image'})
-            image_url = image_element['src'] if image_element else "Image not available"
-
-            # Build the context for the AI
-            context = (
-                f"The customer is viewing: {title}. {description} "
-                f"Key details include: Colour: {colour}, Price: {price}, Mileage: {mileage}, "
-                f"Engine Size: {engine_size}, Features: {features}. "
-                f"Availability: {deposit_status}. Image URL: {image_url}."
-            )
-        else:
+            
+            # Extract specific details (example: color, price, etc.)
+            bike_color = soup.find(class_="vehicle_description_colour").text if soup.find(class_="vehicle_description_colour") else "Unknown"
+            bike_price = soup.find(class_="vehicle_description_price").text if soup.find(class_="vehicle_description_price") else "Not listed"
+            
+            logging.info("Scraped bike details - Color: %s, Price: %s", bike_color, bike_price)
+            
+            context = f"The customer is viewing a bike in {bike_color} priced at {bike_price}."
+        except Exception as scrape_error:
+            logging.error("Error scraping the page: %s", scrape_error)
             context = "Unable to fetch details from the page."
-    except Exception as e:
-        context = f"Error accessing page: {str(e)}"
 
-    # Use OpenAI to generate a response
-    try:
-        ai_response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are Alexa, a remote employee of Iron City Motorcycles. You assist customers by providing specific details about motorcycles they are viewing, collected from the URL, and collect contact details to arrange follow-ups."},
-                {"role": "system", "content": context},
-                {"role": "user", "content": user_message}
-            ]
-        )
-        bot_reply = ai_response['choices'][0]['message']['content']
-
-        # Clean fallback for unanswered questions
-        if "not found" in bot_reply.lower() or "cannot find" in bot_reply.lower():
-            bot_reply = (
-                "Unfortunately, I don’t have that information at the moment. "
-                "Could I arrange a call with one of our team members who can assist you further? "
-                "Alternatively, I can arrange for them to email you the information. Would that work for you?"
+        # Generate response using OpenAI
+        logging.info("Sending context and user message to OpenAI API.")
+        try:
+            ai_response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are Alexa, an assistant for Iron City Motorcycles. Provide concise, professional responses."},
+                    {"role": "system", "content": context},
+                    {"role": "user", "content": user_message}
+                ]
             )
+            bot_reply = ai_response['choices'][0]['message']['content']
+            logging.info("OpenAI response: %s", bot_reply)
+            return jsonify({"reply": bot_reply})
+        except Exception as ai_error:
+            logging.error("Error generating response with OpenAI: %s", ai_error)
+            return jsonify({"error": "An error occurred while processing your request."}), 500
 
-        return jsonify({"reply": bot_reply})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception as general_error:
+        logging.critical("Unexpected error: %s", general_error, exc_info=True)
+        return jsonify({"error": "Internal server error."}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(debug=True)
