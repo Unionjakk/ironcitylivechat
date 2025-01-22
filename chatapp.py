@@ -23,11 +23,35 @@ def chat():
         response = requests.get(page_url)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
-            title = soup.find('h1').text if soup.find('h1') else "Bike details not found"
-            price = soup.find(class_='price').text if soup.find(class_='price') else "Price not listed"
-            colour_element = soup.find(string="Colour:")
-            colour = colour_element.find_next().text if colour_element else "Colour not specified"
-            context = f"The customer is viewing: {title}, priced at {price}, available in {colour}."
+
+            # Extract bike information
+            title = soup.find('h2', {'id': 'used_vehicle_title_mobile'}).text.strip() if soup.find('h2', {'id': 'used_vehicle_title_mobile'}) else "Title not found"
+            description = soup.find('p', {'class': 'vehicle_description'}).text.strip() if soup.find('p', {'class': 'vehicle_description'}) else "Description not available"
+            colour_element = soup.find('span', {'class': 'vehicle_description_colour'})
+            colour = colour_element.text.strip() if colour_element else "Colour not specified"
+            price_element = soup.find('span', {'class': 'vehicle_description_price'})
+            price = price_element.text.strip() if price_element else "Price not listed"
+            mileage_element = soup.find('span', {'class': 'vehicle_description_mileage'})
+            mileage = mileage_element.text.strip() if mileage_element else "Mileage not listed"
+            features_element = soup.find('span', {'class': 'vehicle_description_tags'})
+            features = features_element.text.strip() if features_element else "Features not listed"
+            engine_size_element = soup.find('span', {'class': 'vehicle_description_engine_size'})
+            engine_size = engine_size_element.text.strip() if engine_size_element else "Engine size not listed"
+
+            # Check for deposit status
+            deposit_status = "Deposit Taken" if soup.find('div', {'class': 'caption deposit'}) else "Available for reservation"
+
+            # Extract bike image
+            image_element = soup.find('img', {'class': 'used_bike_image'})
+            image_url = image_element['src'] if image_element else "Image not available"
+
+            # Build the context for the AI
+            context = (
+                f"The customer is viewing: {title}. {description} "
+                f"Key details include: Colour: {colour}, Price: {price}, Mileage: {mileage}, "
+                f"Engine Size: {engine_size}, Features: {features}. "
+                f"Availability: {deposit_status}. Image URL: {image_url}."
+            )
         else:
             context = "Unable to fetch details from the page."
     except Exception as e:
