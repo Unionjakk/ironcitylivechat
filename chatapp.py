@@ -14,8 +14,13 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
+# Memory for customer name
+customer_name = None
+
 @app.route('/chat', methods=['POST'])
 def chat():
+    global customer_name  # Use a global variable to track the customer name across interactions
+
     user_message = request.json.get("message")
     page_url = request.json.get("url")
 
@@ -37,12 +42,13 @@ def chat():
             title = soup.find('h2', id="used_vehicle_title_mobile").text.strip() if soup.find('h2', id="used_vehicle_title_mobile") else "Bike title not found"
             color = soup.find('span', class_="vehicle_description_colour").text.strip() if soup.find('span', class_="vehicle_description_colour") else "Colour not listed"
             price = soup.find('span', class_="vehicle_description_price").text.strip() if soup.find('span', class_="vehicle_description_price") else "Price not listed"
+            mileage = soup.find('span', class_="vehicle_description_mileage").text.strip() if soup.find('span', class_="vehicle_description_mileage") else "Mileage not listed"
 
             # Check for deposit status
             deposit_status = "Deposit Taken" if soup.find('div', class_="caption deposit") else "Available for reservation"
 
             # Add deposit status to the context
-            context = f"Title: {title}, Colour: {color}, Price: {price}, Availability: {deposit_status}"
+            context = f"Title: {title}, Colour: {color}, Price: {price}, Mileage: {mileage}, Availability: {deposit_status}"
             logging.info(f"Extracted details: {context}")
         else:
             context = "Unable to fetch details from the page due to HTTP error."
@@ -53,14 +59,19 @@ def chat():
 
     # Handle introductions and dynamic query progression
     try:
-        if "my name is" in user_message.lower():
-            customer_name = user_message.split("my name is")[-1].strip()
-            if any(word in customer_name.lower() for word in ["swear1", "swear2"]):  # Replace with profanity checks
-                bot_reply = "That's not a proper name. How else can I address you?"
+        if customer_name is None:
+            # Ask for the customer's name
+            if "my name is" in user_message.lower():
+                name = user_message.split("my name is")[-1].strip()
+                if any(word in name.lower() for word in ["swear1", "swear2"]):  # Replace with profanity checks
+                    bot_reply = "That's not a proper name. How else can I address you?"
+                else:
+                    customer_name = name
+                    bot_reply = f"Nice to meet you, {customer_name}! How can I assist you further?"
             else:
-                bot_reply = f"Nice to meet you, {customer_name}! How can I assist you further?"
-
+                bot_reply = "Hi, my name is Alexa, and I work for Iron City Motorcycles. How would you like me to address you?"
         else:
+            # Handle regular queries
             ai_response = openai.ChatCompletion.create(
                 model="gpt-4",
                 messages=[
@@ -73,7 +84,7 @@ def chat():
 
         # Include deposit-specific logic in response
         if "Deposit Taken" in context:
-            bot_reply += "\nPlease note, this bike is already reserved. Let me know if you'd like to explore other options."
+            bot_reply += f"\nPlease note, this bike is already reserved. Let me know if you'd like to explore other options."
 
         return jsonify({"reply": bot_reply})
 
