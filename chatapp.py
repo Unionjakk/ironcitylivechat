@@ -35,14 +35,14 @@ def chat():
 
             # Extract bike details
             title = soup.find('h2', id="used_vehicle_title_mobile").text.strip() if soup.find('h2', id="used_vehicle_title_mobile") else "Bike title not found"
-            color = soup.find('span', class_="vehicle_description_colour").text.strip() if soup.find('span', class_="vehicle_description_colour") else "Color not listed"
+            color = soup.find('span', class_="vehicle_description_colour").text.strip() if soup.find('span', class_="vehicle_description_colour") else "Colour not listed"
             price = soup.find('span', class_="vehicle_description_price").text.strip() if soup.find('span', class_="vehicle_description_price") else "Price not listed"
 
             # Check for deposit status
             deposit_status = "Deposit Taken" if soup.find('div', class_="caption deposit") else "Available for reservation"
 
             # Add deposit status to the context
-            context = f"Title: {title}, Color: {color}, Price: {price}, Availability: {deposit_status}"
+            context = f"Title: {title}, Colour: {color}, Price: {price}, Availability: {deposit_status}"
             logging.info(f"Extracted details: {context}")
         else:
             context = "Unable to fetch details from the page due to HTTP error."
@@ -51,17 +51,25 @@ def chat():
         context = f"Error accessing page: {str(e)}"
         logging.error(f"Scraping error: {str(e)}")
 
-    # Use OpenAI to generate a response
+    # Handle introductions and dynamic query progression
     try:
-        ai_response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are Alexa, a helpful assistant for Iron City Motorcycles. Assist customers by providing information from the webpage they are viewing and arranging follow-ups if needed."},
-                {"role": "system", "content": context},
-                {"role": "user", "content": user_message}
-            ]
-        )
-        bot_reply = ai_response['choices'][0]['message']['content']
+        if "my name is" in user_message.lower():
+            customer_name = user_message.split("my name is")[-1].strip()
+            if any(word in customer_name.lower() for word in ["swear1", "swear2"]):  # Replace with profanity checks
+                bot_reply = "That's not a proper name. How else can I address you?"
+            else:
+                bot_reply = f"Nice to meet you, {customer_name}! How can I assist you further?"
+
+        else:
+            ai_response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are Alexa, a helpful assistant for Iron City Motorcycles. Use UK English and provide concise, professional responses."},
+                    {"role": "system", "content": context},
+                    {"role": "user", "content": user_message}
+                ]
+            )
+            bot_reply = ai_response['choices'][0]['message']['content']
 
         # Include deposit-specific logic in response
         if "Deposit Taken" in context:
