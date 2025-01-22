@@ -50,7 +50,7 @@ def chat():
 
 if __name__ == '__main__':
     app.run(debug=True)
-=======
+
 from flask import Flask, request, jsonify
 import openai
 import requests
