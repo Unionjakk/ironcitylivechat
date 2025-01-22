@@ -68,6 +68,15 @@ def chat():
             ]
         )
         bot_reply = ai_response['choices'][0]['message']['content']
+
+        # Clean fallback for unanswered questions
+        if "not found" in bot_reply.lower() or "cannot find" in bot_reply.lower():
+            bot_reply = (
+                "Unfortunately, I don’t have that information at the moment. "
+                "Could I arrange a call with one of our team members who can assist you further? "
+                "Alternatively, I can arrange for them to email you the information. Would that work for you?"
+            )
+
         return jsonify({"reply": bot_reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
