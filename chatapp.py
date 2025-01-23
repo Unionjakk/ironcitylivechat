@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import logging
+import json
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -14,13 +15,19 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Memory for customer name
-customer_name = None
+# Load settings from external file
+def load_settings():
+    try:
+        with open("settings.json", "r") as file:
+            return json.load(file)
+    except Exception as e:
+        logging.error(f"Error loading settings: {e}")
+        return {}
+
+settings = load_settings()
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    global customer_name  # Use a global variable to track the customer name across interactions
-
     user_message = request.json.get("message")
     page_url = request.json.get("url")
 
@@ -51,46 +58,36 @@ def chat():
             context = f"Title: {title}, Colour: {color}, Price: {price}, Mileage: {mileage}, Availability: {deposit_status}"
             logging.info(f"Extracted details: {context}")
         else:
-            context = "Unable to fetch details from the page due to HTTP error."
+            context = settings.get("fallback_response", "Unable to fetch details from the page.")
             logging.error(f"Failed to fetch page. Status code: {response.status_code}")
     except Exception as e:
-        context = f"Error accessing page: {str(e)}"
+        context = settings.get("fallback_response", "Error accessing page details.")
         logging.error(f"Scraping error: {str(e)}")
 
-    # Handle introductions and dynamic query progression
+    # Generate a response using OpenAI
     try:
-        if customer_name is None:
-            # Ask for the customer's name
-            if "my name is" in user_message.lower():
-                name = user_message.split("my name is")[-1].strip()
-                if any(word in name.lower() for word in ["swear1", "swear2"]):  # Replace with profanity checks
-                    bot_reply = "That's not a proper name. How else can I address you?"
-                else:
-                    customer_name = name
-                    bot_reply = f"Nice to meet you, {customer_name}! How can I assist you further?"
-            else:
-                bot_reply = "Hi, my name is Alexa, and I work for Iron City Motorcycles. How would you like me to address you?"
-        else:
-            # Handle regular queries
-            ai_response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are Alexa, a helpful assistant for Iron City Motorcycles. Use UK English and provide concise, professional responses."},
-                    {"role": "system", "content": context},
-                    {"role": "user", "content": user_message}
-                ]
-            )
-            bot_reply = ai_response['choices'][0]['message']['content']
+        ai_response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": settings.get("tone", "You are Alexa, a helpful assistant.")},
+                {"role": "system", "content": context},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        bot_reply = ai_response['choices'][0]['message']['content']
 
         # Include deposit-specific logic in response
         if "Deposit Taken" in context:
-            bot_reply += f"\nPlease note, this bike is already reserved. Let me know if you'd like to explore other options."
+            bot_reply += settings.get(
+                "deposit_followup",
+                "\nPlease note, this bike is already reserved. Let me know if you'd like to explore other options."
+            )
 
         return jsonify({"reply": bot_reply})
 
     except Exception as e:
         logging.error(f"OpenAI API error: {str(e)}")
-        return jsonify({"error": "An error occurred while processing your request."}), 500
+        return jsonify({"error": settings.get("fallback_response", "An error occurred while processing your request.")}), 500
 
 # RESTORED: Correct if __name__ block
 if __name__ == '__main__':
